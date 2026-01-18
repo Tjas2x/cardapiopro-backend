@@ -5,7 +5,6 @@ const ordersRoutes = require("./routes/orders.routes");
 require("dotenv").config();
 
 const express = require("express");
-const cors = require("cors");
 
 const authRoutes = require("./routes/auth.routes");
 const productsRoutes = require("./routes/products.routes");
@@ -14,24 +13,31 @@ const merchantRestaurantsRoutes = require("./routes/merchant.restaurants.routes"
 const app = express();
 
 /* =========================
-   CORS (Vercel + Localhost)
+   CORS manual (Vercel + Localhost)
 ========================= */
-app.use(
-  cors({
-    origin: [
-      "https://cardapiopro-web.vercel.app",
-      "http://localhost:3000",
-    ],
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+const allowedOrigins = [
+  "https://cardapiopro-web.vercel.app",
+  "http://localhost:3000",
+];
 
-// ✅ Preflight sem usar app.options("*") ou app.options("/*")
 app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+  );
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Vary", "Origin");
+
   if (req.method === "OPTIONS") {
     return res.sendStatus(204);
   }
+
   next();
 });
 
