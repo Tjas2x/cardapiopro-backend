@@ -27,8 +27,8 @@ app.use(
   })
 );
 
-// garante preflight (OPTIONS)
-app.options("*", cors());
+// ✅ Preflight (IMPORTANTE: usar "/*" e NÃO "*")
+app.options("/*", cors());
 
 /* =========================
    Middlewares
