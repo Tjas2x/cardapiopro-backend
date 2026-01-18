@@ -27,8 +27,13 @@ app.use(
   })
 );
 
-// ✅ Preflight (IMPORTANTE: usar "/*" e NÃO "*")
-app.options("/*", cors());
+// ✅ Preflight sem usar app.options("*") ou app.options("/*")
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 /* =========================
    Middlewares
