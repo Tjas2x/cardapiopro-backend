@@ -6,14 +6,13 @@ function isActiveSubscription(sub) {
   const now = new Date();
 
   if (sub.status === "CANCELED") return false;
+  if (sub.status === "EXPIRED") return false;
 
-  // TRIAL válido
   if (sub.status === "TRIAL") {
     if (!sub.trialEndsAt) return false;
     return now <= new Date(sub.trialEndsAt);
   }
 
-  // ACTIVE válido
   if (sub.status === "ACTIVE") {
     if (!sub.paidUntil) return false;
     return now <= new Date(sub.paidUntil);
@@ -39,7 +38,7 @@ async function requireActiveSubscription(req, res, next) {
       });
     }
 
-    const sub = restaurant.subscription;
+    let sub = restaurant.subscription;
 
     if (!sub) {
       return res.status(402).json({
@@ -51,8 +50,9 @@ async function requireActiveSubscription(req, res, next) {
     const ok = isActiveSubscription(sub);
 
     if (!ok) {
+      // Se já estiver cancelado/expired, só devolve
       if (sub.status !== "EXPIRED" && sub.status !== "CANCELED") {
-        await prisma.subscription.update({
+        sub = await prisma.subscription.update({
           where: { id: sub.id },
           data: { status: "EXPIRED" },
         });

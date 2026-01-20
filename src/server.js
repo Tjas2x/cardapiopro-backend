@@ -1,17 +1,22 @@
-const restaurantsRoutes = require("./routes/restaurants.routes");
-const publicOrdersRoutes = require("./routes/public.orders.routes");
-
-const ordersRoutes = require("./routes/orders.routes");
 require("dotenv").config();
 
 const express = require("express");
 
 const authRoutes = require("./routes/auth.routes");
 const productsRoutes = require("./routes/products.routes");
-const merchantRestaurantsRoutes = require("./routes/merchant.restaurants.routes");
+const ordersRoutes = require("./routes/orders.routes");
 
-// ✅ NOVO
+const restaurantsRoutes = require("./routes/restaurants.routes");
+const merchantRestaurantsRoutes = require("./routes/merchant.restaurants.routes");
+const publicOrdersRoutes = require("./routes/public.orders.routes");
+
+const adminFixRoutes = require("./routes/admin.fix.routes");
+
+// ✅ /me
 const meRoutes = require("./routes/me.routes");
+
+// ✅ NOVO: billing whatsapp
+const billingRoutes = require("./routes/billing.routes");
 
 const app = express();
 
@@ -52,15 +57,21 @@ app.use(express.json());
 /* =========================
    Routes
 ========================= */
+app.use(adminFixRoutes);
+
 app.use("/auth", authRoutes);
 app.use("/products", productsRoutes);
 app.use("/orders", ordersRoutes);
+
 app.use("/restaurants", restaurantsRoutes);
 app.use("/merchant/restaurants", merchantRestaurantsRoutes);
 app.use("/public/orders", publicOrdersRoutes);
 
 // ✅ NOVO: /me
 app.use(meRoutes);
+
+// ✅ NOVO: /billing/whatsapp
+app.use("/billing", billingRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend comerciante online 🚀");
