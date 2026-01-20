@@ -43,6 +43,9 @@ model Restaurant {
   products Product[]
   orders   Order[] // ✅ ADICIONADO (opposite relation)
 
+  // ✅ NOVO (assinatura do restaurante)
+  subscription Subscription?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -120,4 +123,31 @@ model OrderItem {
 
   @@index([orderId])
   @@index([productId])
+}
+
+//
+// ✅ NOVOS (Assinatura / Trial)
+//
+enum PlanStatus {
+  TRIAL
+  ACTIVE
+  EXPIRED
+  CANCELED
+}
+
+model Subscription {
+  id           String     @id @default(uuid())
+  restaurantId String     @unique
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  status      PlanStatus @default(TRIAL)
+  trialEndsAt DateTime?
+  paidUntil   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([trialEndsAt])
+  @@index([paidUntil])
 }
