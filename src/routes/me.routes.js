@@ -4,10 +4,13 @@ const { prisma } = require("../lib/prisma");
 
 const router = express.Router();
 
-/**
- * GET /me
- * Retorna usuário + restaurante do comerciante logado, incluindo assinatura
- */
+function addDays(date, days) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+// GET /me
 router.get("/me", authMiddleware, async (req, res) => {
   try {
     const userId = req.user?.sub;
@@ -15,8 +18,16 @@ router.get("/me", authMiddleware, async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, name: true, role: true, active: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        active: true,
+      },
     });
+
+    if (!user) return res.status(401).json({ error: "Usuário não encontrado" });
 
     const restaurant = await prisma.restaurant.findFirst({
       where: { ownerId: userId },
@@ -27,20 +38,56 @@ router.get("/me", authMiddleware, async (req, res) => {
         phone: true,
         address: true,
         isOpen: true,
-        subscription: {
-          select: {
-            status: true,
-            trialEndsAt: true,
-            paidUntil: true,
-          },
-        },
       },
     });
 
-    return res.json({ user, restaurant });
+    if (!restaurant) {
+      return res.json({ user, restaurant: null });
+    }
+
+    // ✅ busca subscription
+    let subscription = await prisma.subscription.findUnique({
+      where: { restaurantId: restaurant.id },
+      select: {
+        status: true,
+        trialEndsAt: true,
+        paidUntil: true,
+      },
+    });
+
+    // ✅ AUTO-FIX: se não existir, cria TRIAL 7 dias (para bases antigas)
+    if (!subscription) {
+      const now = new Date();
+      const trialEndsAt = addDays(now, 7);
+
+      await prisma.subscription.create({
+        data: {
+          restaurantId: restaurant.id,
+          status: "TRIAL",
+          trialEndsAt,
+        },
+      });
+
+      subscription = await prisma.subscription.findUnique({
+        where: { restaurantId: restaurant.id },
+        select: {
+          status: true,
+          trialEndsAt: true,
+          paidUntil: true,
+        },
+      });
+    }
+
+    return res.json({
+      user,
+      restaurant: {
+        ...restaurant,
+        subscription,
+      },
+    });
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Erro ao carregar perfil" });
+    console.error("ERRO /me:", err);
+    return res.status(500).json({ error: "Erro ao carregar /me" });
   }
 });
 
