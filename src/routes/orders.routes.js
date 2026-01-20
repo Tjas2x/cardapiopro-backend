@@ -9,10 +9,11 @@ const {
 
 const router = express.Router();
 
-router.use(authMiddleware);
-
-router.get("/", listOrders);
+// ✅ Público (cliente do cardápio finaliza o pedido)
 router.post("/", createOrder);
-router.patch("/:id/status", updateOrderStatus);
+
+// ✅ Protegido (somente comerciante)
+router.get("/", authMiddleware, listOrders);
+router.patch("/:id/status", authMiddleware, updateOrderStatus);
 
 module.exports = router;

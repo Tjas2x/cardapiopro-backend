@@ -10,6 +10,9 @@ const authRoutes = require("./routes/auth.routes");
 const productsRoutes = require("./routes/products.routes");
 const merchantRestaurantsRoutes = require("./routes/merchant.restaurants.routes");
 
+// ✅ NOVO
+const meRoutes = require("./routes/me.routes");
+
 const app = express();
 
 /* =========================
@@ -55,6 +58,9 @@ app.use("/orders", ordersRoutes);
 app.use("/restaurants", restaurantsRoutes);
 app.use("/merchant/restaurants", merchantRestaurantsRoutes);
 app.use("/public/orders", publicOrdersRoutes);
+
+// ✅ NOVO: /me
+app.use(meRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend comerciante online 🚀");
