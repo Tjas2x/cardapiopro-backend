@@ -45,7 +45,7 @@ router.get("/me", authMiddleware, async (req, res) => {
       return res.json({ user, restaurant: null });
     }
 
-    // ✅ busca subscription
+    // ✅ busca subscription (por restaurantId)
     let subscription = await prisma.subscription.findUnique({
       where: { restaurantId: restaurant.id },
       select: {

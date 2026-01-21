@@ -11,9 +11,6 @@ router.use(authMiddleware);
 /**
  * POST /merchant/restaurants
  * Cria restaurante para o comerciante logado.
- * Obs: você já criou restaurante automático no /auth/register,
- * mas isso aqui é útil caso algum usuário antigo esteja sem restaurante.
- *
  * ⚠️ Não exige assinatura ativa aqui, porque ele pode estar sem restaurante ainda.
  */
 router.post("/", async (req, res) => {
@@ -85,12 +82,11 @@ router.post("/", async (req, res) => {
   }
 });
 
-// ✅ A partir daqui precisa assinatura ativa (editar/gerenciar)
+// ✅ A partir daqui precisa assinatura ativa
 router.use(requireActiveSubscription);
 
 /**
  * GET /merchant/restaurants/me
- * Retorna o restaurante do comerciante logado
  */
 router.get("/me", async (req, res) => {
   try {
@@ -114,7 +110,6 @@ router.get("/me", async (req, res) => {
 
 /**
  * PATCH /merchant/restaurants/me
- * Atualiza dados do restaurante do comerciante logado
  */
 router.patch("/me", async (req, res) => {
   try {
