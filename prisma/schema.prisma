@@ -22,6 +22,7 @@ model User {
 
   // relations
   restaurants Restaurant[]
+  activationCodesUsed ActivationCode[] @relation("ActivationCodeUsedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -41,9 +42,9 @@ model Restaurant {
 
   // relations
   products Product[]
-  orders   Order[] // ✅ ADICIONADO (opposite relation)
+  orders   Order[]
 
-  // ✅ NOVO (assinatura do restaurante)
+  // assinatura do restaurante
   subscription Subscription?
 
   createdAt DateTime @default(now())
@@ -64,7 +65,7 @@ model Product {
   restaurantId String
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
-  orderItems OrderItem[] // ✅ ADICIONADO (opposite relation)
+  orderItems OrderItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -107,7 +108,7 @@ model OrderItem {
 
   // FK (order)
   orderId String
-  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order   Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   // FK (product)
   productId String
@@ -125,9 +126,6 @@ model OrderItem {
   @@index([productId])
 }
 
-//
-// ✅ NOVOS (Assinatura / Trial)
-//
 enum PlanStatus {
   TRIAL
   ACTIVE
@@ -150,4 +148,27 @@ model Subscription {
   @@index([status])
   @@index([trialEndsAt])
   @@index([paidUntil])
+}
+
+enum ActivationCodePlan {
+  monthly
+  yearly
+}
+
+model ActivationCode {
+  id   String @id @default(uuid())
+  code String @unique
+
+  plan ActivationCodePlan
+  days Int
+
+  usedAt   DateTime?
+  usedById String?
+  usedBy   User? @relation("ActivationCodeUsedBy", fields: [usedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([plan])
+  @@index([usedAt])
+  @@index([usedById])
 }
