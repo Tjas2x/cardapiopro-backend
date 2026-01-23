@@ -21,17 +21,26 @@ const billingRoutes = require("./routes/billing.routes");
 const app = express();
 
 /* =========================
-   CORS manual (Vercel + Localhost)
+   CORS manual (Vercel + Localhost + LAN)
 ========================= */
 const allowedOrigins = [
   "https://cardapiopro-web.vercel.app",
   "http://localhost:3000",
 ];
 
+function isLocalNetworkOrigin(origin) {
+  // ✅ aceita: http://192.168.x.x:3000 (ou qualquer porta)
+  // exemplo: http://192.168.100.3:3000
+  return /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(origin);
+}
+
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  if (origin && allowedOrigins.includes(origin)) {
+  if (
+    origin &&
+    (allowedOrigins.includes(origin) || isLocalNetworkOrigin(origin))
+  ) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
 
@@ -39,7 +48,12 @@ app.use((req, res, next) => {
     "Access-Control-Allow-Methods",
     "GET,POST,PUT,PATCH,DELETE,OPTIONS"
   );
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
+
   res.setHeader("Vary", "Origin");
 
   if (req.method === "OPTIONS") {
