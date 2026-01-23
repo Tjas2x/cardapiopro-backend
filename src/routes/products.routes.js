@@ -2,9 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const { authMiddleware } = require("../middlewares/authMiddleware");
-const {
-  requireActiveSubscription,
-} = require("../middlewares/subscriptionMiddleware");
+const { requireActiveSubscription } = require("../middlewares/subscriptionMiddleware");
 
 const { prisma } = require("../lib/prisma");
 
@@ -21,7 +19,6 @@ router.get("/", async (req, res) => {
     const userId = req.user?.sub;
     if (!userId) return res.status(401).json({ error: "Não autenticado" });
 
-    // Se subscriptionMiddleware rodou, já temos req.restaurantId
     const restaurantId = req.restaurantId;
 
     const products = await prisma.product.findMany({
@@ -48,6 +45,7 @@ router.post("/", async (req, res) => {
     const restaurantId = req.restaurantId;
 
     const name = String(req.body?.name || "").trim();
+
     const description =
       req.body?.description !== undefined && req.body?.description !== null
         ? String(req.body.description).trim()
@@ -90,6 +88,34 @@ router.post("/", async (req, res) => {
 });
 
 /**
+ * GET /products/:id
+ * Busca 1 produto específico do restaurante do comerciante logado
+ * (necessário para a tela Editar Produto do app comerciante)
+ */
+router.get("/:id", async (req, res) => {
+  try {
+    const userId = req.user?.sub;
+    if (!userId) return res.status(401).json({ error: "Não autenticado" });
+
+    const restaurantId = req.restaurantId;
+    const { id } = req.params;
+
+    const product = await prisma.product.findFirst({
+      where: { id, restaurantId },
+    });
+
+    if (!product) {
+      return res.status(404).json({ error: "Produto não encontrado" });
+    }
+
+    return res.json(product);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Erro ao buscar produto" });
+  }
+});
+
+/**
  * PUT /products/:id
  * Atualiza produto do restaurante do comerciante logado
  */
@@ -111,9 +137,7 @@ router.put("/:id", async (req, res) => {
     }
 
     const name =
-      req.body?.name !== undefined
-        ? String(req.body.name || "").trim()
-        : undefined;
+      req.body?.name !== undefined ? String(req.body.name || "").trim() : undefined;
 
     const description =
       req.body?.description !== undefined
@@ -123,9 +147,7 @@ router.put("/:id", async (req, res) => {
         : undefined;
 
     const priceCents =
-      req.body?.priceCents !== undefined
-        ? Number(req.body.priceCents)
-        : undefined;
+      req.body?.priceCents !== undefined ? Number(req.body.priceCents) : undefined;
 
     const imageUrl =
       req.body?.imageUrl !== undefined
@@ -191,20 +213,21 @@ router.delete("/:id", async (req, res) => {
       return res.status(404).json({ error: "Produto não encontrado" });
     }
 
-    // ✅ impede excluir se já existe em pedidos
-    const used = await prisma.orderItem.findFirst({
+    // ✅ Verifica se já foi usado em pedidos
+    const usedCount = await prisma.orderItem.count({
       where: { productId: id },
-      select: { id: true },
     });
 
-    if (used) {
+    if (usedCount > 0) {
       return res.status(409).json({
         error:
-          "Não é possível excluir este produto porque ele já foi usado em pedidos. Desative o produto em vez de excluir.",
+          "Este produto já foi usado em pedidos e não pode ser excluído. Desative o produto para removê-lo do cardápio.",
       });
     }
 
-    await prisma.product.delete({ where: { id } });
+    await prisma.product.delete({
+      where: { id },
+    });
 
     return res.json({ ok: true });
   } catch (err) {
