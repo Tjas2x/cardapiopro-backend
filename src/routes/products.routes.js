@@ -2,7 +2,9 @@ const express = require("express");
 const router = express.Router();
 
 const { authMiddleware } = require("../middlewares/authMiddleware");
-const { requireActiveSubscription } = require("../middlewares/subscriptionMiddleware");
+const {
+  requireActiveSubscription,
+} = require("../middlewares/subscriptionMiddleware");
 
 const { prisma } = require("../lib/prisma");
 
@@ -109,7 +111,9 @@ router.put("/:id", async (req, res) => {
     }
 
     const name =
-      req.body?.name !== undefined ? String(req.body.name || "").trim() : undefined;
+      req.body?.name !== undefined
+        ? String(req.body.name || "").trim()
+        : undefined;
 
     const description =
       req.body?.description !== undefined
@@ -119,7 +123,9 @@ router.put("/:id", async (req, res) => {
         : undefined;
 
     const priceCents =
-      req.body?.priceCents !== undefined ? Number(req.body.priceCents) : undefined;
+      req.body?.priceCents !== undefined
+        ? Number(req.body.priceCents)
+        : undefined;
 
     const imageUrl =
       req.body?.imageUrl !== undefined
@@ -135,7 +141,10 @@ router.put("/:id", async (req, res) => {
       return res.status(400).json({ error: "Nome inválido" });
     }
 
-    if (priceCents !== undefined && (!Number.isInteger(priceCents) || priceCents <= 0)) {
+    if (
+      priceCents !== undefined &&
+      (!Number.isInteger(priceCents) || priceCents <= 0)
+    ) {
       return res.status(400).json({ error: "Preço inválido (em centavos)" });
     }
 
@@ -160,6 +169,10 @@ router.put("/:id", async (req, res) => {
 /**
  * DELETE /products/:id
  * Exclui produto do restaurante do comerciante logado
+ *
+ * ✅ CORREÇÃO PROFISSIONAL:
+ * - Se o produto já foi usado em pedidos (OrderItem), não pode excluir.
+ * - Retorna 409 e orienta desativar em vez de apagar.
  */
 router.delete("/:id", async (req, res) => {
   try {
@@ -176,6 +189,19 @@ router.delete("/:id", async (req, res) => {
 
     if (!existing) {
       return res.status(404).json({ error: "Produto não encontrado" });
+    }
+
+    // ✅ impede excluir se já existe em pedidos
+    const used = await prisma.orderItem.findFirst({
+      where: { productId: id },
+      select: { id: true },
+    });
+
+    if (used) {
+      return res.status(409).json({
+        error:
+          "Não é possível excluir este produto porque ele já foi usado em pedidos. Desative o produto em vez de excluir.",
+      });
     }
 
     await prisma.product.delete({ where: { id } });
