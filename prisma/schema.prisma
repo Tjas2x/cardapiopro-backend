@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  
 }
 
 enum Role {
@@ -21,8 +22,8 @@ model User {
   active   Boolean @default(true)
 
   // relations
-  restaurants Restaurant[]
-  activationCodesUsed ActivationCode[] @relation("ActivationCodeUsedBy")
+  restaurants          Restaurant[]
+  activationCodesUsed  ActivationCode[] @relation("ActivationCodeUsedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -81,6 +82,16 @@ enum OrderStatus {
   CANCELED
 }
 
+/**
+ * ✅ NOVO: Pagamento do pedido (cliente escolhe no cardápio)
+ */
+enum PaymentMethod {
+  PIX
+  CARD_CREDIT
+  CARD_DEBIT
+  CASH
+}
+
 model Order {
   id     String      @id @default(uuid())
   status OrderStatus @default(NEW)
@@ -90,6 +101,11 @@ model Order {
   deliveryAddress String?
 
   totalCents Int
+
+  // ✅ PAGAMENTO
+  paymentMethod      PaymentMethod @default(PIX)
+  cashChangeForCents Int?
+  paid               Boolean       @default(false)
 
   // FK (restaurant)
   restaurantId String
@@ -101,6 +117,8 @@ model Order {
   updatedAt DateTime @updatedAt
 
   @@index([restaurantId])
+  @@index([status])
+  @@index([paymentMethod])
 }
 
 model OrderItem {

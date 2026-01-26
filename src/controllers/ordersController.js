@@ -1,3 +1,4 @@
+// backend/controllers/ordersController.js
 const { prisma } = require("../lib/prisma");
 
 /**
@@ -15,6 +16,7 @@ async function getMyRestaurantId(userId) {
 /**
  * ✅ LISTAR PEDIDOS (merchant)
  * Só retorna pedidos do restaurante do comerciante logado
+ * ✅ Inclui paymentMethod / cashChangeForCents / paid
  */
 async function listOrders(req, res) {
   try {
@@ -26,10 +28,27 @@ async function listOrders(req, res) {
 
     const orders = await prisma.order.findMany({
       where: { restaurantId },
-      include: {
+      orderBy: { createdAt: "desc" },
+
+      // ✅ FORÇA retorno completo (evita “sumir” campos)
+      select: {
+        id: true,
+        status: true,
+
+        customerName: true,
+        customerPhone: true,
+        deliveryAddress: true,
+
+        totalCents: true,
+        createdAt: true,
+
+        // ✅ pagamento
+        paymentMethod: true,
+        cashChangeForCents: true,
+        paid: true,
+
         items: true,
       },
-      orderBy: { createdAt: "desc" },
     });
 
     return res.json(orders);
@@ -40,18 +59,39 @@ async function listOrders(req, res) {
 }
 
 /**
- * ✅ CRIAR PEDIDO (PÚBLICO)
- * Cliente do cardápio cria pedido sem token.
- * Precisa receber restaurantId no body.
+ * ✅ CRIAR PEDIDO (PÚBLICO) - legado
+ * ⚠️ NÃO RECOMENDADO USAR: o correto é /public/orders
+ *
+ * Mantido para compatibilidade, mas:
+ * - bloqueia assinatura (mesma regra)
+ * - aceita customerAddress OU deliveryAddress
+ * - salva pagamento (paymentMethod / cashChangeForCents / paid)
  */
+function isValidPaymentMethod(pm) {
+  return (
+    pm === "PIX" ||
+    pm === "CARD_CREDIT" ||
+    pm === "CARD_DEBIT" ||
+    pm === "CASH"
+  );
+}
+
 async function createOrder(req, res) {
   try {
     const {
       restaurantId,
       customerName,
       customerPhone,
+
+      // compat
+      customerAddress,
       deliveryAddress,
+
       items,
+
+      // pagamento
+      paymentMethod,
+      cashChangeForCents,
     } = req.body;
 
     if (!restaurantId) {
@@ -75,6 +115,87 @@ async function createOrder(req, res) {
     if (!restaurant.isOpen) {
       return res.status(400).json({ error: "Restaurante está fechado" });
     }
+
+    // ✅ BLOQUEIO POR ASSINATURA (mesma regra do /public/orders)
+    const subscription = await prisma.subscription.findFirst({
+      where: { restaurantId },
+      orderBy: { createdAt: "desc" },
+      select: { status: true, trialEndsAt: true, paidUntil: true },
+    });
+
+    if (!subscription) {
+      return res.status(402).json({
+        error: "Assinatura necessária para receber pedidos.",
+        code: "SUBSCRIPTION_REQUIRED",
+      });
+    }
+
+    const now = new Date();
+
+    // TRIAL expirado
+    if (subscription.status === "TRIAL") {
+      const end = subscription.trialEndsAt
+        ? new Date(subscription.trialEndsAt)
+        : null;
+
+      if (end && now > end) {
+        return res.status(402).json({
+          error: "Restaurante indisponível: teste expirou.",
+          code: "TRIAL_EXPIRED",
+        });
+      }
+    }
+
+    // ACTIVE mas paidUntil vencido
+    if (subscription.status === "ACTIVE") {
+      const paidUntil = subscription.paidUntil
+        ? new Date(subscription.paidUntil)
+        : null;
+
+      if (paidUntil && now > paidUntil) {
+        return res.status(402).json({
+          error: "Restaurante sem assinatura ativa no momento.",
+          code: "SUBSCRIPTION_EXPIRED",
+        });
+      }
+    }
+
+    // EXPIRED / CANCELED
+    if (
+      subscription.status === "EXPIRED" ||
+      subscription.status === "CANCELED"
+    ) {
+      return res.status(402).json({
+        error: "Restaurante sem assinatura ativa no momento.",
+        code: "SUBSCRIPTION_EXPIRED",
+      });
+    }
+
+    // ✅ pagamento (default PIX)
+    const safePaymentMethod = paymentMethod || "PIX";
+    if (!isValidPaymentMethod(safePaymentMethod)) {
+      return res.status(400).json({
+        error:
+          "paymentMethod inválido. Use PIX, CARD_CREDIT, CARD_DEBIT ou CASH.",
+      });
+    }
+
+    let safeCashChangeForCents = null;
+
+    if (safePaymentMethod === "CASH") {
+      if (cashChangeForCents !== undefined && cashChangeForCents !== null) {
+        const v = Number(cashChangeForCents);
+        if (!Number.isInteger(v) || v <= 0) {
+          return res.status(400).json({ error: "cashChangeForCents inválido" });
+        }
+        safeCashChangeForCents = v;
+      } else {
+        safeCashChangeForCents = null;
+      }
+    }
+
+    const resolvedDeliveryAddress =
+      (customerAddress ?? deliveryAddress ?? null) || null;
 
     const productIds = items.map((i) => i.productId);
 
@@ -115,14 +236,29 @@ async function createOrder(req, res) {
       };
     });
 
+    // ✅ regra troco: se informado, tem que ser >= total
+    if (safePaymentMethod === "CASH" && safeCashChangeForCents !== null) {
+      if (safeCashChangeForCents < totalCents) {
+        return res.status(400).json({
+          error: "Troco inválido: deve ser maior ou igual ao total do pedido.",
+        });
+      }
+    }
+
     const order = await prisma.order.create({
       data: {
         restaurantId,
         customerName: customerName ?? null,
         customerPhone: customerPhone ?? null,
-        deliveryAddress: deliveryAddress ?? null,
+        deliveryAddress: resolvedDeliveryAddress ?? null,
+
         totalCents,
         status: "NEW",
+
+        paymentMethod: safePaymentMethod,
+        cashChangeForCents: safeCashChangeForCents,
+        paid: false,
+
         items: { create: orderItemsData },
       },
       include: { items: true },
@@ -131,9 +267,18 @@ async function createOrder(req, res) {
     return res.status(201).json(order);
   } catch (err) {
     console.error(err);
+    const msg = String(err?.message || "");
+
+    if (
+      msg.includes("Quantidade inválida") ||
+      msg.includes("Produto inválido")
+    ) {
+      return res.status(400).json({ error: msg });
+    }
+
     return res
       .status(500)
-      .json({ error: err.message || "Erro ao criar pedido" });
+      .json({ error: msg || "Erro ao criar pedido" });
   }
 }
 

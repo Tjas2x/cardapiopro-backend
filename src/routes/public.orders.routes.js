@@ -3,15 +3,105 @@ const router = express.Router();
 
 const { prisma } = require("../lib/prisma");
 
-// POST /public/orders
+/**
+ * Regras:
+ * - Bloqueio por assinatura
+ * - Calcula total pelo banco (snapshot)
+ * - Salva pagamento (paymentMethod / cashChangeForCents)
+ * - Aceita customerAddress OU deliveryAddress
+ * - Retorna orderId para tracking
+ */
+
+function isValidPaymentMethod(pm) {
+  return (
+    pm === "PIX" ||
+    pm === "CARD_CREDIT" ||
+    pm === "CARD_DEBIT" ||
+    pm === "CASH"
+  );
+}
+
+/**
+ * GET /public/orders/:id
+ * Cliente acompanha o pedido
+ */
+router.get("/:id", async (req, res) => {
+  try {
+    const orderId = req.params.id;
+
+    if (!orderId) {
+      return res.status(400).json({ error: "orderId é obrigatório" });
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        status: true,
+        customerName: true,
+        customerPhone: true,
+        deliveryAddress: true,
+        totalCents: true,
+        paymentMethod: true,
+        cashChangeForCents: true,
+        paid: true,
+        createdAt: true,
+
+        restaurant: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            address: true,
+          },
+        },
+
+        items: {
+          select: {
+            id: true,
+            quantity: true,
+            unitPriceCents: true,
+            nameSnapshot: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: "Pedido não encontrado" });
+    }
+
+    // ✅ compatibilidade: devolve customerAddress também
+    return res.json({
+      ...order,
+      customerAddress: order.deliveryAddress ?? null,
+    });
+  } catch (err) {
+    console.error(err);
+    const msg = String(err?.message || "");
+    return res.status(500).json({ error: msg || "Erro ao buscar pedido" });
+  }
+});
+
+/**
+ * POST /public/orders
+ */
 router.post("/", async (req, res) => {
   try {
     const {
       restaurantId,
       customerName,
       customerPhone,
+
+      // ✅ aceitar os 2 nomes:
+      customerAddress,
       deliveryAddress,
+
       items,
+
+      // ✅ pagamento
+      paymentMethod,
+      cashChangeForCents,
     } = req.body;
 
     if (!restaurantId) {
@@ -22,11 +112,11 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Pedido sem itens" });
     }
 
-    // ✅ BLOQUEIO POR ASSINATURA (TRIAL/EXPIRED/CANCELED)
+    // ✅ BLOQUEIO POR ASSINATURA
     const subscription = await prisma.subscription.findFirst({
       where: { restaurantId },
       orderBy: { createdAt: "desc" },
-      select: { status: true, trialEndsAt: true },
+      select: { status: true, trialEndsAt: true, paidUntil: true },
     });
 
     if (!subscription) {
@@ -52,6 +142,20 @@ router.post("/", async (req, res) => {
       }
     }
 
+    // ACTIVE mas paidUntil vencido (proteção extra)
+    if (subscription.status === "ACTIVE") {
+      const paidUntil = subscription.paidUntil
+        ? new Date(subscription.paidUntil)
+        : null;
+
+      if (paidUntil && now > paidUntil) {
+        return res.status(402).json({
+          error: "Restaurante sem assinatura ativa no momento.",
+          code: "SUBSCRIPTION_EXPIRED",
+        });
+      }
+    }
+
     // EXPIRED / CANCELED
     if (
       subscription.status === "EXPIRED" ||
@@ -63,7 +167,37 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // ✅ Buscar produtos do restaurante (garante que não mistura restaurante)
+    // ✅ validar pagamento
+    const safePaymentMethod = paymentMethod || "PIX";
+
+    if (!isValidPaymentMethod(safePaymentMethod)) {
+      return res.status(400).json({
+        error:
+          "paymentMethod inválido. Use PIX, CARD_CREDIT, CARD_DEBIT ou CASH.",
+      });
+    }
+
+    let safeCashChangeForCents = null;
+
+    if (safePaymentMethod === "CASH") {
+      if (cashChangeForCents !== undefined && cashChangeForCents !== null) {
+        const v = Number(cashChangeForCents);
+        if (!Number.isInteger(v) || v <= 0) {
+          return res
+            .status(400)
+            .json({ error: "cashChangeForCents inválido" });
+        }
+        safeCashChangeForCents = v;
+      } else {
+        safeCashChangeForCents = null; // sem troco
+      }
+    }
+
+    // ✅ endereço compatível
+    const resolvedDeliveryAddress =
+      (customerAddress ?? deliveryAddress ?? null) || null;
+
+    // ✅ Buscar produtos do restaurante
     const productIds = items.map((i) => i.productId);
 
     const products = await prisma.product.findMany({
@@ -83,7 +217,6 @@ router.post("/", async (req, res) => {
       const qty = Number(i.quantity);
 
       if (!Number.isInteger(qty) || qty <= 0) {
-        // mantém compatível com seu fluxo atual
         throw new Error("Quantidade inválida");
       }
 
@@ -104,24 +237,44 @@ router.post("/", async (req, res) => {
       };
     });
 
+    // ✅ regra troco: se informado, tem que ser >= total
+    if (safePaymentMethod === "CASH" && safeCashChangeForCents !== null) {
+      if (safeCashChangeForCents < totalCents) {
+        return res.status(400).json({
+          error: "Troco inválido: deve ser maior ou igual ao total do pedido.",
+        });
+      }
+    }
+
     const order = await prisma.order.create({
       data: {
         restaurantId,
         customerName: customerName ?? null,
         customerPhone: customerPhone ?? null,
-        deliveryAddress: deliveryAddress ?? null,
+        deliveryAddress: resolvedDeliveryAddress,
         totalCents,
         status: "NEW",
+
+        paymentMethod: safePaymentMethod,
+        cashChangeForCents: safeCashChangeForCents,
+        paid: false,
+
         items: { create: orderItemsData },
       },
       include: { items: true },
     });
 
-    return res.status(201).json(order);
+    return res.status(201).json({
+      orderId: order.id,
+      status: order.status,
+      totalCents: order.totalCents,
+      paymentMethod: order.paymentMethod,
+      cashChangeForCents: order.cashChangeForCents,
+      createdAt: order.createdAt,
+    });
   } catch (err) {
     console.error(err);
 
-    // ✅ Se for erro do usuário (produto inválido/quantidade inválida), retorna 400 (mais correto)
     const msg = String(err?.message || "");
 
     if (

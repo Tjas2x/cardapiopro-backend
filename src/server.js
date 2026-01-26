@@ -15,7 +15,7 @@ const adminFixRoutes = require("./routes/admin.fix.routes");
 // ✅ /me
 const meRoutes = require("./routes/me.routes");
 
-// ✅ NOVO: billing whatsapp
+// ✅ billing
 const billingRoutes = require("./routes/billing.routes");
 
 const app = express();
@@ -30,7 +30,6 @@ const allowedOrigins = [
 
 function isLocalNetworkOrigin(origin) {
   // ✅ aceita: http://192.168.x.x:3000 (ou qualquer porta)
-  // exemplo: http://192.168.100.3:3000
   return /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(origin);
 }
 
@@ -49,9 +48,10 @@ app.use((req, res, next) => {
     "GET,POST,PUT,PATCH,DELETE,OPTIONS"
   );
 
+  // ✅ inclui x-admin-secret (pra admin tools) e aceita padrões do fetch
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization"
+    "Content-Type, Authorization, x-admin-secret"
   );
 
   res.setHeader("Vary", "Origin");
@@ -81,10 +81,10 @@ app.use("/restaurants", restaurantsRoutes);
 app.use("/merchant/restaurants", merchantRestaurantsRoutes);
 app.use("/public/orders", publicOrdersRoutes);
 
-// ✅ NOVO: /me
+// ✅ /me
 app.use(meRoutes);
 
-// ✅ NOVO: /billing/whatsapp
+// ✅ /billing
 app.use("/billing", billingRoutes);
 
 app.get("/", (req, res) => {
