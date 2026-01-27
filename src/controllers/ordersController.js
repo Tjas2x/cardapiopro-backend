@@ -1,4 +1,4 @@
-// backend/controllers/ordersController.js
+// backend/src/controllers/ordersController.js
 const { prisma } = require("../lib/prisma");
 
 /**
@@ -15,8 +15,6 @@ async function getMyRestaurantId(userId) {
 
 /**
  * ✅ LISTAR PEDIDOS (merchant)
- * Só retorna pedidos do restaurante do comerciante logado
- * ✅ Inclui paymentMethod / cashChangeForCents / paid
  */
 async function listOrders(req, res) {
   try {
@@ -29,24 +27,17 @@ async function listOrders(req, res) {
     const orders = await prisma.order.findMany({
       where: { restaurantId },
       orderBy: { createdAt: "desc" },
-
-      // ✅ FORÇA retorno completo (evita “sumir” campos)
       select: {
         id: true,
         status: true,
-
         customerName: true,
         customerPhone: true,
         deliveryAddress: true,
-
         totalCents: true,
         createdAt: true,
-
-        // ✅ pagamento
         paymentMethod: true,
         cashChangeForCents: true,
         paid: true,
-
         items: true,
       },
     });
@@ -59,13 +50,51 @@ async function listOrders(req, res) {
 }
 
 /**
- * ✅ CRIAR PEDIDO (PÚBLICO) - legado
- * ⚠️ NÃO RECOMENDADO USAR: o correto é /public/orders
- *
- * Mantido para compatibilidade, mas:
- * - bloqueia assinatura (mesma regra)
- * - aceita customerAddress OU deliveryAddress
- * - salva pagamento (paymentMethod / cashChangeForCents / paid)
+ * ===============================
+ * ✅ BUSCAR PEDIDO (PÚBLICO)
+ * ===============================
+ * Cliente acompanha pedido pelo ID
+ * ⚠️ NÃO aplica regra de assinatura
+ * ⚠️ NÃO aplica regra de status
+ */
+async function getPublicOrderById(req, res) {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ error: "orderId é obrigatório" });
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        restaurant: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            address: true,
+          },
+        },
+        items: true,
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: "Pedido não encontrado" });
+    }
+
+    return res.json(order);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Erro ao buscar pedido" });
+  }
+}
+
+/**
+ * ===============================
+ * ✅ CRIAR PEDIDO (PÚBLICO)
+ * ===============================
  */
 function isValidPaymentMethod(pm) {
   return (
@@ -82,14 +111,9 @@ async function createOrder(req, res) {
       restaurantId,
       customerName,
       customerPhone,
-
-      // compat
       customerAddress,
       deliveryAddress,
-
       items,
-
-      // pagamento
       paymentMethod,
       cashChangeForCents,
     } = req.body;
@@ -102,7 +126,6 @@ async function createOrder(req, res) {
       return res.status(400).json({ error: "Pedido sem itens" });
     }
 
-    // opcional: checar se restaurante existe e está aberto
     const restaurant = await prisma.restaurant.findUnique({
       where: { id: restaurantId },
       select: { id: true, isOpen: true },
@@ -116,7 +139,7 @@ async function createOrder(req, res) {
       return res.status(400).json({ error: "Restaurante está fechado" });
     }
 
-    // ✅ BLOQUEIO POR ASSINATURA (mesma regra do /public/orders)
+    // 🔒 BLOQUEIO POR ASSINATURA (somente na CRIAÇÃO)
     const subscription = await prisma.subscription.findFirst({
       where: { restaurantId },
       orderBy: { createdAt: "desc" },
@@ -132,12 +155,10 @@ async function createOrder(req, res) {
 
     const now = new Date();
 
-    // TRIAL expirado
     if (subscription.status === "TRIAL") {
       const end = subscription.trialEndsAt
         ? new Date(subscription.trialEndsAt)
         : null;
-
       if (end && now > end) {
         return res.status(402).json({
           error: "Restaurante indisponível: teste expirou.",
@@ -146,56 +167,45 @@ async function createOrder(req, res) {
       }
     }
 
-    // ACTIVE mas paidUntil vencido
     if (subscription.status === "ACTIVE") {
       const paidUntil = subscription.paidUntil
         ? new Date(subscription.paidUntil)
         : null;
-
       if (paidUntil && now > paidUntil) {
         return res.status(402).json({
-          error: "Restaurante sem assinatura ativa no momento.",
+          error: "Assinatura expirada.",
           code: "SUBSCRIPTION_EXPIRED",
         });
       }
     }
 
-    // EXPIRED / CANCELED
     if (
       subscription.status === "EXPIRED" ||
       subscription.status === "CANCELED"
     ) {
       return res.status(402).json({
-        error: "Restaurante sem assinatura ativa no momento.",
+        error: "Restaurante sem assinatura ativa.",
         code: "SUBSCRIPTION_EXPIRED",
       });
     }
 
-    // ✅ pagamento (default PIX)
     const safePaymentMethod = paymentMethod || "PIX";
     if (!isValidPaymentMethod(safePaymentMethod)) {
-      return res.status(400).json({
-        error:
-          "paymentMethod inválido. Use PIX, CARD_CREDIT, CARD_DEBIT ou CASH.",
-      });
+      return res.status(400).json({ error: "paymentMethod inválido" });
     }
 
     let safeCashChangeForCents = null;
 
-    if (safePaymentMethod === "CASH") {
-      if (cashChangeForCents !== undefined && cashChangeForCents !== null) {
-        const v = Number(cashChangeForCents);
-        if (!Number.isInteger(v) || v <= 0) {
-          return res.status(400).json({ error: "cashChangeForCents inválido" });
-        }
-        safeCashChangeForCents = v;
-      } else {
-        safeCashChangeForCents = null;
+    if (safePaymentMethod === "CASH" && cashChangeForCents != null) {
+      const v = Number(cashChangeForCents);
+      if (!Number.isInteger(v) || v <= 0) {
+        return res.status(400).json({ error: "cashChangeForCents inválido" });
       }
+      safeCashChangeForCents = v;
     }
 
     const resolvedDeliveryAddress =
-      (customerAddress ?? deliveryAddress ?? null) || null;
+      customerAddress ?? deliveryAddress ?? null;
 
     const productIds = items.map((i) => i.productId);
 
@@ -214,16 +224,13 @@ async function createOrder(req, res) {
 
     const orderItemsData = items.map((i) => {
       const qty = Number(i.quantity);
-
       if (!Number.isInteger(qty) || qty <= 0) {
         throw new Error("Quantidade inválida");
       }
 
       const p = map.get(i.productId);
       if (!p) {
-        throw new Error(
-          "Produto inválido (não pertence ao restaurante ou inativo)"
-        );
+        throw new Error("Produto inválido");
       }
 
       totalCents += p.priceCents * qty;
@@ -236,13 +243,14 @@ async function createOrder(req, res) {
       };
     });
 
-    // ✅ regra troco: se informado, tem que ser >= total
-    if (safePaymentMethod === "CASH" && safeCashChangeForCents !== null) {
-      if (safeCashChangeForCents < totalCents) {
-        return res.status(400).json({
-          error: "Troco inválido: deve ser maior ou igual ao total do pedido.",
-        });
-      }
+    if (
+      safePaymentMethod === "CASH" &&
+      safeCashChangeForCents !== null &&
+      safeCashChangeForCents < totalCents
+    ) {
+      return res.status(400).json({
+        error: "Troco inválido: deve ser maior ou igual ao total.",
+      });
     }
 
     const order = await prisma.order.create({
@@ -250,15 +258,12 @@ async function createOrder(req, res) {
         restaurantId,
         customerName: customerName ?? null,
         customerPhone: customerPhone ?? null,
-        deliveryAddress: resolvedDeliveryAddress ?? null,
-
+        deliveryAddress: resolvedDeliveryAddress,
         totalCents,
         status: "NEW",
-
         paymentMethod: safePaymentMethod,
         cashChangeForCents: safeCashChangeForCents,
         paid: false,
-
         items: { create: orderItemsData },
       },
       include: { items: true },
@@ -267,25 +272,14 @@ async function createOrder(req, res) {
     return res.status(201).json(order);
   } catch (err) {
     console.error(err);
-    const msg = String(err?.message || "");
-
-    if (
-      msg.includes("Quantidade inválida") ||
-      msg.includes("Produto inválido")
-    ) {
-      return res.status(400).json({ error: msg });
-    }
-
-    return res
-      .status(500)
-      .json({ error: msg || "Erro ao criar pedido" });
+    return res.status(500).json({ error: "Erro ao criar pedido" });
   }
 }
 
 /**
+ * ===============================
  * ✅ ATUALIZAR STATUS (merchant)
- * Merchant só altera pedidos do restaurante dele
- * e só permite transições válidas
+ * ===============================
  */
 async function updateOrderStatus(req, res) {
   try {
@@ -317,12 +311,9 @@ async function updateOrderStatus(req, res) {
       CANCELED: [],
     };
 
-    const current = order.status;
-    const allowed = allowedTransitions[current] || [];
-
-    if (!allowed.includes(status)) {
+    if (!allowedTransitions[order.status].includes(status)) {
       return res.status(400).json({
-        error: `Transição inválida: ${current} → ${status}`,
+        error: `Transição inválida: ${order.status} → ${status}`,
       });
     }
 
@@ -341,6 +332,7 @@ async function updateOrderStatus(req, res) {
 
 module.exports = {
   listOrders,
+  getPublicOrderById,
   createOrder,
   updateOrderStatus,
 };

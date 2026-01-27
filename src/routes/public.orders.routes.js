@@ -5,7 +5,7 @@ const { prisma } = require("../lib/prisma");
 
 /**
  * Regras:
- * - Bloqueio por assinatura
+ * - Bloqueio por assinatura (SOMENTE NA CRIAÇÃO)
  * - Calcula total pelo banco (snapshot)
  * - Salva pagamento (paymentMethod / cashChangeForCents)
  * - Aceita customerAddress OU deliveryAddress
@@ -22,11 +22,18 @@ function isValidPaymentMethod(pm) {
 }
 
 /**
+ * ===============================
  * GET /public/orders/:id
  * Cliente acompanha o pedido
+ * ===============================
  */
 router.get("/:id", async (req, res) => {
   try {
+    // 🔥 GARANTE QUE NUNCA FIQUE EM CACHE
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
     const orderId = req.params.id;
 
     if (!orderId) {
@@ -38,9 +45,11 @@ router.get("/:id", async (req, res) => {
       select: {
         id: true,
         status: true,
+
         customerName: true,
         customerPhone: true,
         deliveryAddress: true,
+
         totalCents: true,
         paymentMethod: true,
         cashChangeForCents: true,
@@ -71,7 +80,7 @@ router.get("/:id", async (req, res) => {
       return res.status(404).json({ error: "Pedido não encontrado" });
     }
 
-    // ✅ compatibilidade: devolve customerAddress também
+    // ✅ compatibilidade com frontend
     return res.json({
       ...order,
       customerAddress: order.deliveryAddress ?? null,
@@ -84,7 +93,10 @@ router.get("/:id", async (req, res) => {
 });
 
 /**
+ * ===============================
  * POST /public/orders
+ * Criar pedido
+ * ===============================
  */
 router.post("/", async (req, res) => {
   try {
@@ -92,14 +104,9 @@ router.post("/", async (req, res) => {
       restaurantId,
       customerName,
       customerPhone,
-
-      // ✅ aceitar os 2 nomes:
       customerAddress,
       deliveryAddress,
-
       items,
-
-      // ✅ pagamento
       paymentMethod,
       cashChangeForCents,
     } = req.body;
@@ -112,7 +119,10 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Pedido sem itens" });
     }
 
-    // ✅ BLOQUEIO POR ASSINATURA
+    /**
+     * 🔒 BLOQUEIO POR ASSINATURA
+     * ⚠️ SOMENTE NA CRIAÇÃO
+     */
     const subscription = await prisma.subscription.findFirst({
       where: { restaurantId },
       orderBy: { createdAt: "desc" },
@@ -128,7 +138,6 @@ router.post("/", async (req, res) => {
 
     const now = new Date();
 
-    // TRIAL expirado
     if (subscription.status === "TRIAL") {
       const end = subscription.trialEndsAt
         ? new Date(subscription.trialEndsAt)
@@ -142,7 +151,6 @@ router.post("/", async (req, res) => {
       }
     }
 
-    // ACTIVE mas paidUntil vencido (proteção extra)
     if (subscription.status === "ACTIVE") {
       const paidUntil = subscription.paidUntil
         ? new Date(subscription.paidUntil)
@@ -156,7 +164,6 @@ router.post("/", async (req, res) => {
       }
     }
 
-    // EXPIRED / CANCELED
     if (
       subscription.status === "EXPIRED" ||
       subscription.status === "CANCELED"
@@ -188,16 +195,12 @@ router.post("/", async (req, res) => {
             .json({ error: "cashChangeForCents inválido" });
         }
         safeCashChangeForCents = v;
-      } else {
-        safeCashChangeForCents = null; // sem troco
       }
     }
 
-    // ✅ endereço compatível
     const resolvedDeliveryAddress =
-      (customerAddress ?? deliveryAddress ?? null) || null;
+      customerAddress ?? deliveryAddress ?? null;
 
-    // ✅ Buscar produtos do restaurante
     const productIds = items.map((i) => i.productId);
 
     const products = await prisma.product.findMany({
@@ -237,7 +240,6 @@ router.post("/", async (req, res) => {
       };
     });
 
-    // ✅ regra troco: se informado, tem que ser >= total
     if (safePaymentMethod === "CASH" && safeCashChangeForCents !== null) {
       if (safeCashChangeForCents < totalCents) {
         return res.status(400).json({
