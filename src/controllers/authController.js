@@ -72,25 +72,22 @@ async function login(req, res) {
  */
 async function forgotPassword(req, res) {
   try {
-    console.log("🔁 FORGOT PASSWORD CHAMADO:", req.body);
+    console.log("🔁 FORGOT PASSWORD CHAMADO (BYPASS):", req.body);
 
-    const email = String(req.body.email || "").trim().toLowerCase();
-
-    await authService.forgotPassword(email);
-
-    // resposta genérica por segurança
+    // 🔥 BYPASS TOTAL — NÃO chama service
     return res.json({
       ok: true,
-      message:
-        "Se o e-mail existir, enviaremos um link para criar uma nova senha.",
+      message: "BYPASS OK — controller funcionando",
     });
   } catch (err) {
-    console.error("❌ ERRO FORGOT PASSWORD:", err);
+    console.error("❌ ERRO FORGOT PASSWORD (BYPASS):", err);
     return res.status(500).json({
       error: "Erro ao processar solicitação",
     });
   }
 }
+
+
 
 /**
  * 🔍 VALIDAR TOKEN DE RESET
