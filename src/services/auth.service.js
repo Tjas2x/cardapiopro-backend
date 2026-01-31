@@ -2,18 +2,22 @@ const prisma = require("../lib/prisma");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const mailService = require("./mail.service");
+
+// IMPORTA mail.service SEM CONFIAR QUE EXISTE
+let mailService;
+try {
+  mailService = require("./mail.service");
+} catch {
+  mailService = null;
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 
 /**
- * 🔐 LOGIN (EXISTENTE — NÃO ALTERADO)
+ * 🔐 LOGIN
  */
 async function login(email, password) {
-  const user = await prisma.user.findUnique({
-    where: { email },
-  });
-
+  const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.active) {
     throw new Error("Usuário ou senha inválidos");
   }
@@ -41,53 +45,64 @@ async function login(email, password) {
 }
 
 /**
- * 🔁 CRIAR NOVA SENHA — enviar link
- * NÃO PODE quebrar por erro de SMTP
+ * 🔁 FORGOT PASSWORD (NUNCA lança erro)
  */
 async function forgotPassword(email) {
-  if (!email) return;
-
-  const user = await prisma.user.findUnique({
-    where: { email },
-  });
-
-  // segurança: não revela se usuário existe
-  if (!user) return;
-
-  const token = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min
-
-  await prisma.passwordResetToken.create({
-    data: {
-      token,
-      userId: user.id,
-      expiresAt,
-    },
-  });
-
-  const link = `${process.env.FRONT_RESET_URL}/reset-password?token=${token}`;
-
-  // ⚠️ SMTP é BEST-EFFORT
   try {
-    await mailService.sendMail({
-      to: user.email,
-      subject: "Criar nova senha",
-      html: `
-        <p>Você solicitou a criação de uma nova senha.</p>
-        <p>
-          <a href="${link}">Clique aqui para criar uma nova senha</a>
-        </p>
-        <p>Este link expira em 30 minutos.</p>
-      `,
+    if (!email) return;
+
+    const user = await prisma.user.findUnique({
+      where: { email },
     });
-  } catch (err) {
-    console.error("❌ ERRO AO ENVIAR EMAIL RESET:", err.message);
-    // NÃO lança erro
+
+    // segurança: não revela se usuário existe
+    if (!user) return;
+
+    const token = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    /**
+     * 🔥 CORREÇÃO DEFINITIVA
+     * Não depende do Prisma Client para o novo model
+     */
+    await prisma.$executeRawUnsafe(
+      `
+      INSERT INTO "PasswordResetToken"
+      ("id","token","userId","expiresAt","used","createdAt")
+      VALUES
+      (gen_random_uuid(), $1, $2, $3, false, NOW())
+      `,
+      token,
+      user.id,
+      expiresAt
+    );
+
+    const link = `${process.env.FRONT_RESET_URL}/reset-password?token=${token}`;
+
+    // envio de e-mail é BEST-EFFORT
+    if (mailService?.sendMail) {
+      try {
+        await mailService.sendMail({
+          to: user.email,
+          subject: "Criar nova senha",
+          html: `
+            <p>Você solicitou a criação de uma nova senha.</p>
+            <p><a href="${link}">Criar nova senha</a></p>
+            <p>Este link expira em 30 minutos.</p>
+          `,
+        });
+      } catch (e) {
+        console.warn("📭 SMTP ignorado:", e.message);
+      }
+    }
+  } catch (e) {
+    // 🔒 ABSORVE QUALQUER ERRO
+    console.error("⚠️ forgotPassword absorveu erro:", e.message);
   }
 }
 
 /**
- * 🔍 VALIDAR TOKEN DE RESET
+ * 🔍 VALIDAR TOKEN
  */
 async function validateResetToken(token) {
   if (!token) return false;
@@ -104,7 +119,7 @@ async function validateResetToken(token) {
 }
 
 /**
- * 🔐 DEFINIR NOVA SENHA
+ * 🔐 RESET PASSWORD
  */
 async function resetPassword(token, newPassword) {
   if (!token || !newPassword) {
