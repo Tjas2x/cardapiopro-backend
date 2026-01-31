@@ -22,12 +22,14 @@ model User {
   active   Boolean @default(true)
 
   // relations
-  restaurants          Restaurant[]
-  activationCodesUsed  ActivationCode[] @relation("ActivationCodeUsedBy")
+  restaurants         Restaurant[]
+  activationCodesUsed ActivationCode[] @relation("ActivationCodeUsedBy")
+  passwordResetTokens PasswordResetToken[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
 
 model Restaurant {
   id          String  @id @default(uuid())
@@ -189,4 +191,19 @@ model ActivationCode {
   @@index([plan])
   @@index([usedAt])
   @@index([usedById])
+}
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
 }
