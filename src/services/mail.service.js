@@ -3,7 +3,7 @@ let transporter = null;
 try {
   const nodemailer = require("nodemailer");
 
-  
+  // valida se TODAS as variáveis existem
   if (
     process.env.SMTP_HOST &&
     process.env.SMTP_PORT &&
@@ -12,19 +12,24 @@ try {
     process.env.SMTP_FROM
   ) {
     transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT),
-      secure: false,
+      host: process.env.SMTP_HOST,          // smtp.sendgrid.net
+      port: Number(process.env.SMTP_PORT),  // 587
+      secure: false,                        // STARTTLS
       auth: {
-        user: process.env.SMTP_USER, // apikey
-        pass: process.env.SMTP_PASS, // SendGrid API KEY
+        user: process.env.SMTP_USER,        // "apikey"
+        pass: process.env.SMTP_PASS,        // API KEY do SendGrid
+      },
+      tls: {
+        rejectUnauthorized: false,          // 🔥 ESSENCIAL p/ SendGrid em cloud
       },
     });
+
+    console.log("📧 SMTP configurado com sucesso");
   } else {
-    console.warn("⚠️ SMTP não configurado — envio desativado");
+    console.warn("⚠️ SMTP não configurado — envio de e-mail desativado");
   }
 } catch (err) {
-  console.error("❌ Nodemailer indisponível:", err.message);
+  console.error("❌ Erro ao inicializar Nodemailer:", err.message);
   transporter = null;
 }
 
@@ -34,12 +39,20 @@ async function sendMail({ to, subject, html }) {
     return;
   }
 
-  return transporter.sendMail({
-    from: `"CardapioPro" <${process.env.SMTP_FROM}>`,
-    to,
-    subject,
-    html,
-  });
+  try {
+    const info = await transporter.sendMail({
+      from: `"CardapioPro" <${process.env.SMTP_FROM}>`,
+      to,
+      subject,
+      html,
+    });
+
+    console.log("📨 Email enviado com sucesso:", info.messageId);
+  } catch (err) {
+    console.error("❌ Falha ao enviar e-mail:", err.message);
+  }
 }
 
-module.exports = { sendMail };
+module.exports = {
+  sendMail,
+};
