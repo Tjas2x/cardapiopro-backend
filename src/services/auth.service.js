@@ -1,4 +1,4 @@
-const prisma = require("../lib/prisma");
+const { prisma } = require("../lib/prisma");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
@@ -61,21 +61,13 @@ async function forgotPassword(email) {
     const token = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
 
-    /**
-     * 🔥 CORREÇÃO DEFINITIVA
-     * Não depende do Prisma Client para o novo model
-     */
-    await prisma.$executeRawUnsafe(
-      `
-      INSERT INTO "PasswordResetToken"
-      ("id","token","userId","expiresAt","used","createdAt")
-      VALUES
-      (gen_random_uuid(), $1, $2, $3, false, NOW())
-      `,
-      token,
-      user.id,
-      expiresAt
-    );
+    await prisma.passwordResetToken.create({
+      data: {
+        token,
+        userId: user.id,
+        expiresAt,
+      },
+    });
 
     const link = `${process.env.FRONT_RESET_URL}/reset-password?token=${token}`;
 
