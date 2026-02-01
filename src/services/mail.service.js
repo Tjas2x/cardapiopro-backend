@@ -3,7 +3,6 @@ let transporter = null;
 try {
   const nodemailer = require("nodemailer");
 
-  // valida se TODAS as variáveis existem
   if (
     process.env.SMTP_HOST &&
     process.env.SMTP_PORT &&
@@ -15,13 +14,17 @@ try {
       host: process.env.SMTP_HOST,          // smtp.sendgrid.net
       port: Number(process.env.SMTP_PORT),  // 587
       secure: false,                        // STARTTLS
+      requireTLS: true,                     // 🔥 FORÇA TLS (importante)
       auth: {
         user: process.env.SMTP_USER,        // "apikey"
-        pass: process.env.SMTP_PASS,        // API KEY do SendGrid
+        pass: process.env.SMTP_PASS,        // API KEY SendGrid
       },
       tls: {
-        rejectUnauthorized: false,          // 🔥 ESSENCIAL p/ SendGrid em cloud
+        rejectUnauthorized: false,
       },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
     });
 
     console.log("📧 SMTP configurado com sucesso");
@@ -29,7 +32,7 @@ try {
     console.warn("⚠️ SMTP não configurado — envio de e-mail desativado");
   }
 } catch (err) {
-  console.error("❌ Erro ao inicializar Nodemailer:", err.message);
+  console.error("❌ Erro ao inicializar Nodemailer:", err);
   transporter = null;
 }
 
@@ -39,18 +42,16 @@ async function sendMail({ to, subject, html }) {
     return;
   }
 
-  try {
-    const info = await transporter.sendMail({
-      from: `"CardapioPro" <${process.env.SMTP_FROM}>`,
-      to,
-      subject,
-      html,
-    });
+  // ❗ NÃO engolimos erro aqui — queremos VER o retorno do SendGrid
+  const info = await transporter.sendMail({
+    from: `"CardapioPro" <${process.env.SMTP_FROM}>`,
+    to,
+    subject,
+    html,
+  });
 
-    console.log("📨 Email enviado com sucesso:", info.messageId);
-  } catch (err) {
-    console.error("❌ Falha ao enviar e-mail:", err.message);
-  }
+  console.log("📨 SENDGRID RESPONSE:");
+  console.log(info);
 }
 
 module.exports = {
