@@ -162,6 +162,10 @@ model Subscription {
   trialEndsAt DateTime?
   paidUntil   DateTime?
 
+  // 🔽 NOVOS CAMPOS (ESSENCIAIS PARA A TELA)
+  planType          ActivationCodePlan?   // monthly | yearly
+  currentPeriodEnd  DateTime?             // fim do ciclo atual (para o app)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -169,6 +173,7 @@ model Subscription {
   @@index([trialEndsAt])
   @@index([paidUntil])
 }
+
 
 enum ActivationCodePlan {
   monthly

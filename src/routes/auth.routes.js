@@ -5,9 +5,11 @@ const authController = require("../controllers/authController");
 // LOGIN
 router.post("/login", authController.login);
 
-// CRIAR NOVA SENHA (RESET)
+// RESET SIMPLES (sem e-mail, sem SendGrid)
+// Passo 1 — verifica se e-mail existe
 router.post("/forgot-password", authController.forgotPassword);
-router.get("/reset-password/validate", authController.validateResetToken);
+
+// Passo 2 — troca senha direto pelo app
 router.post("/reset-password", authController.resetPassword);
 
 module.exports = router;
