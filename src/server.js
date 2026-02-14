@@ -21,26 +21,10 @@ const billingRoutes = require("./routes/billing.routes");
 const app = express();
 
 /* =========================
-   CORS manual (Vercel + Localhost + LAN)
+   CORS - MOBILE (ALLOW ALL)
 ========================= */
-const allowedOrigins = [
-  "https://cardapiopro-web.vercel.app",
-  "http://localhost:3000",
-];
-
-function isLocalNetworkOrigin(origin) {
-  return /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(origin);
-}
-
 app.use((req, res, next) => {
-  const origin = req.headers.origin;
-
-  if (
-    origin &&
-    (allowedOrigins.includes(origin) || isLocalNetworkOrigin(origin))
-  ) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  }
+  res.setHeader("Access-Control-Allow-Origin", "*");
 
   res.setHeader(
     "Access-Control-Allow-Methods",
@@ -51,8 +35,6 @@ app.use((req, res, next) => {
     "Access-Control-Allow-Headers",
     "Content-Type, Authorization, x-admin-secret"
   );
-
-  res.setHeader("Vary", "Origin");
 
   if (req.method === "OPTIONS") {
     return res.sendStatus(204);
@@ -77,10 +59,10 @@ app.use("/orders", ordersRoutes);
 
 app.use("/restaurants", restaurantsRoutes);
 
-// 🔵 NOVO FLUXO
+// 🔵 Novo fluxo
 app.use("/merchant/restaurants", merchantRestaurantsRoutes);
 
-// 🟢 COMPATIBILIDADE APK V3 (usa /merchant/register)
+// 🟢 Compatibilidade APK V3 (usa /merchant/register)
 app.use("/merchant", merchantRestaurantsRoutes);
 
 app.use("/public/orders", publicOrdersRoutes);
