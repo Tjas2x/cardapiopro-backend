@@ -5,7 +5,7 @@ const bcrypt = require("bcryptjs");
 const { prisma } = require("../lib/prisma");
 
 /**
- * 🔐 LOGIN (INALTERADO — exatamente como você já tinha)
+ * 🔐 LOGIN
  */
 async function login(req, res) {
   try {
@@ -47,15 +47,57 @@ async function login(req, res) {
 }
 
 /**
- * ✅ RESET SIMPLES — PASSO 1
- * POST /auth/forgot-password
- * Apenas valida e devolve o e-mail para o app
+ * 🆕 REGISTER (CRIAR CONTA)
+ */
+async function register(req, res) {
+  try {
+    const name = String(req.body?.name || "").trim();
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const password = String(req.body?.password || "").trim();
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: "Dados inválidos" });
+    }
+
+    const existing = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existing) {
+      return res.status(400).json({ error: "E-mail já cadastrado" });
+    }
+
+    const hashed = await bcrypt.hash(password, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email,
+        password: hashed,
+        role: "MERCHANT",
+      },
+    });
+
+    return res.status(201).json({
+      ok: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+      },
+    });
+  } catch (err) {
+    console.error("❌ ERRO REGISTER:", err);
+    return res.status(500).json({ error: "Erro ao criar conta" });
+  }
+}
+
+/**
+ * 🔁 FORGOT PASSWORD
  */
 async function forgotPassword(req, res) {
   try {
     const email = String(req.body?.email || "").trim().toLowerCase();
-
-    console.log("🔹 FORGOT-PASSWORD RECEBIDO:", { email });
 
     if (!email) {
       return res.status(400).json({ error: "E-mail ausente" });
@@ -65,10 +107,9 @@ async function forgotPassword(req, res) {
       where: { email },
     });
 
-    // NÃO revelamos se o e-mail existe (boa prática)
     return res.json({
       ok: true,
-      email,        // <-- ESSENCIAL para a próxima tela do app
+      email,
       exists: !!user,
     });
   } catch (err) {
@@ -78,34 +119,22 @@ async function forgotPassword(req, res) {
 }
 
 /**
- * ✅ RESET SIMPLES — PASSO 2 (CORRIGIDO)
- * POST /auth/reset-password
- * Troca a senha diretamente pelo e-mail
+ * 🔁 RESET PASSWORD
  */
 async function resetPassword(req, res) {
   try {
-    // NORMALIZAÇÃO (CORREÇÃO CRÍTICA)
     const email = String(req.body?.email || "").trim().toLowerCase();
     const newPassword = String(req.body?.newPassword || "").trim();
 
-    console.log("🔹 RESET RECEBIDO:", {
-      email,
-      newPasswordLength: newPassword.length,
-    });
-
-    // VALIDAÇÕES CLARAS (sem falso positivo)
     if (!email) {
-      console.error("❌ RESET: email vazio");
       return res.status(400).json({ error: "Dados inválidos: e-mail ausente" });
     }
 
     if (!newPassword) {
-      console.error("❌ RESET: senha vazia");
       return res.status(400).json({ error: "Dados inválidos: senha ausente" });
     }
 
     if (newPassword.length < 6) {
-      console.error("❌ RESET: senha muito curta");
       return res.status(400).json({ error: "Senha muito curta" });
     }
 
@@ -114,7 +143,6 @@ async function resetPassword(req, res) {
     });
 
     if (!user) {
-      console.error("❌ RESET: usuário não encontrado para", email);
       return res.status(400).json({ error: "Usuário não encontrado" });
     }
 
@@ -125,8 +153,6 @@ async function resetPassword(req, res) {
       data: { password: hashed },
     });
 
-    console.log("✅ SENHA ALTERADA COM SUCESSO PARA:", email);
-
     return res.json({ ok: true });
   } catch (err) {
     console.error("❌ ERRO RESET PASSWORD:", err);
@@ -136,6 +162,7 @@ async function resetPassword(req, res) {
 
 module.exports = {
   login,
+  register,        // ⬅️ ESSENCIAL
   forgotPassword,
   resetPassword,
 };
