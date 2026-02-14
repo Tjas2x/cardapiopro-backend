@@ -5,13 +5,86 @@ const { authMiddleware } = require("../middlewares/authMiddleware");
 const { requireActiveSubscription } = require("../middlewares/subscriptionMiddleware");
 const { prisma } = require("../lib/prisma");
 
-// ✅ logado
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+
+
+// 🟢 PUBLICO - Cadastro (compatível com APK V3)
+router.post("/register", async (req, res) => {
+  try {
+    const { name, email, password, phone } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: "Campos obrigatórios faltando" });
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existingUser) {
+      return res.status(409).json({ error: "Email já em uso" });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        email,
+        password: passwordHash,
+        name,
+        role: "MERCHANT",
+      },
+    });
+
+    const restaurant = await prisma.restaurant.create({
+      data: {
+        name,
+        phone,
+        ownerId: user.id,
+      },
+    });
+
+    const trialEndsAt = new Date();
+    trialEndsAt.setDate(trialEndsAt.getDate() + 7);
+
+    const subscription = await prisma.subscription.create({
+      data: {
+        restaurantId: restaurant.id,
+        status: "TRIAL",
+        trialEndsAt,
+      },
+    });
+
+    const token = jwt.sign(
+      {
+        userId: user.id,
+        restaurantId: restaurant.id,
+        role: user.role,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    return res.status(201).json({
+      token,
+      user,
+      restaurant,
+      subscription,
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: "Erro ao registrar restaurante" });
+  }
+});
+
+
+// 🔒 A PARTIR DAQUI EXIGE LOGIN
 router.use(authMiddleware);
+
 
 /**
  * POST /merchant/restaurants
- * Cria restaurante para o comerciante logado.
- * ⚠️ Não exige assinatura ativa aqui, porque ele pode estar sem restaurante ainda.
  */
 router.post("/", async (req, res) => {
   try {
@@ -50,7 +123,6 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Nome do restaurante é obrigatório" });
     }
 
-    // ✅ já cria subscription TRIAL 7 dias (se criou restaurante manualmente)
     const now = new Date();
     const trialEndsAt = new Date(now);
     trialEndsAt.setDate(trialEndsAt.getDate() + 7);
@@ -82,8 +154,10 @@ router.post("/", async (req, res) => {
   }
 });
 
-// ✅ A partir daqui precisa assinatura ativa
+
+// 🔒 EXIGE ASSINATURA ATIVA
 router.use(requireActiveSubscription);
+
 
 /**
  * GET /merchant/restaurants/me
@@ -107,6 +181,7 @@ router.get("/me", async (req, res) => {
     return res.status(500).json({ error: "Erro ao carregar restaurante" });
   }
 });
+
 
 /**
  * PATCH /merchant/restaurants/me
