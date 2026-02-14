@@ -47,7 +47,7 @@ async function login(req, res) {
 }
 
 /**
- * 🆕 REGISTER (CRIAR CONTA)
+ * 🆕 REGISTER COM AUTO-CRIAÇÃO DE RESTAURANTE
  */
 async function register(req, res) {
   try {
@@ -78,22 +78,37 @@ async function register(req, res) {
       },
     });
 
-    return res.status(201).json({
-      ok: true,
+    // 🚀 AUTO CRIA RESTAURANTE
+    await prisma.restaurant.create({
+      data: {
+        name: name,
+        ownerId: user.id,
+      },
+    });
+
+    const token = jwt.sign(
+      { sub: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET || "dev_secret",
+      { expiresIn: "7d" }
+    );
+
+    return res.json({
+      token,
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
+        role: user.role,
       },
     });
   } catch (err) {
     console.error("❌ ERRO REGISTER:", err);
-    return res.status(500).json({ error: "Erro ao criar conta" });
+    return res.status(500).json({ error: "Erro no cadastro" });
   }
 }
 
 /**
- * 🔁 FORGOT PASSWORD
+ * RESET — PASSO 1
  */
 async function forgotPassword(req, res) {
   try {
@@ -119,7 +134,7 @@ async function forgotPassword(req, res) {
 }
 
 /**
- * 🔁 RESET PASSWORD
+ * RESET — PASSO 2
  */
 async function resetPassword(req, res) {
   try {
@@ -162,7 +177,7 @@ async function resetPassword(req, res) {
 
 module.exports = {
   login,
-  register,        // ⬅️ ESSENCIAL
+  register,
   forgotPassword,
   resetPassword,
 };
