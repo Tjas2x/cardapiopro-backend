@@ -12,7 +12,15 @@ const jwt = require("jsonwebtoken");
 // 🟢 PUBLICO - Cadastro (compatível com APK V3)
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, password, phone } = req.body;
+
+    const name =
+      req.body.name ||
+      req.body.restaurantName ||
+      req.body.ownerName;
+
+    const email = req.body.email;
+    const password = req.body.password;
+    const phone = req.body.phone;
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: "Campos obrigatórios faltando" });
