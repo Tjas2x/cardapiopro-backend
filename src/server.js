@@ -29,7 +29,6 @@ const allowedOrigins = [
 ];
 
 function isLocalNetworkOrigin(origin) {
-  // ✅ aceita: http://192.168.x.x:3000 (ou qualquer porta)
   return /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(origin);
 }
 
@@ -48,7 +47,6 @@ app.use((req, res, next) => {
     "GET,POST,PUT,PATCH,DELETE,OPTIONS"
   );
 
-  // ✅ inclui x-admin-secret (pra admin tools) e aceita padrões do fetch
   res.setHeader(
     "Access-Control-Allow-Headers",
     "Content-Type, Authorization, x-admin-secret"
@@ -78,15 +76,19 @@ app.use("/products", productsRoutes);
 app.use("/orders", ordersRoutes);
 
 app.use("/restaurants", restaurantsRoutes);
-//app.use("/merchant/restaurants", restaurantsRoutes);
 
+// 🔵 NOVO FLUXO
 app.use("/merchant/restaurants", merchantRestaurantsRoutes);
+
+// 🟢 COMPATIBILIDADE APK V3 (usa /merchant/register)
+app.use("/merchant", merchantRestaurantsRoutes);
+
 app.use("/public/orders", publicOrdersRoutes);
 
 // ✅ /me
 app.use(meRoutes);
 
-// ✅ /billing
+// ✅ billing
 app.use("/billing", billingRoutes);
 
 app.get("/", (req, res) => {
