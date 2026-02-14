@@ -78,7 +78,7 @@ app.use("/products", productsRoutes);
 app.use("/orders", ordersRoutes);
 
 app.use("/restaurants", restaurantsRoutes);
-app.use("/merchant/restaurants", restaurantsRoutes);
+//app.use("/merchant/restaurants", restaurantsRoutes);
 
 app.use("/merchant/restaurants", merchantRestaurantsRoutes);
 app.use("/public/orders", publicOrdersRoutes);
