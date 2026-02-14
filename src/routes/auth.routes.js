@@ -5,11 +5,11 @@ const authController = require("../controllers/authController");
 // LOGIN
 router.post("/login", authController.login);
 
-// RESET SIMPLES (sem e-mail, sem SendGrid)
-// Passo 1 — verifica se e-mail existe
-router.post("/forgot-password", authController.forgotPassword);
+// 🆕 REGISTER (CRIAR CONTA)
+router.post("/register", authController.register);
 
-// Passo 2 — troca senha direto pelo app
+// RESET SIMPLES
+router.post("/forgot-password", authController.forgotPassword);
 router.post("/reset-password", authController.resetPassword);
 
 module.exports = router;
