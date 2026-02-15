@@ -20,7 +20,9 @@ model User {
   name     String
   role     Role    @default(MERCHANT)
   active   Boolean @default(true)
-
+  
+  // 🔔 PUSH TOKEN (NOVO)
+  expoPushToken String?
   // relations
   restaurants         Restaurant[]
   activationCodesUsed ActivationCode[] @relation("ActivationCodeUsedBy")

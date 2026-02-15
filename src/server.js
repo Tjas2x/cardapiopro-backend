@@ -18,6 +18,9 @@ const meRoutes = require("./routes/me.routes");
 // ✅ billing
 const billingRoutes = require("./routes/billing.routes");
 
+// 🔔 PUSH
+const pushRoutes = require("./routes/push.routes");
+
 const app = express();
 
 /* =========================
@@ -72,6 +75,9 @@ app.use(meRoutes);
 
 // ✅ billing
 app.use("/billing", billingRoutes);
+
+// 🔔 PUSH TOKEN
+app.use(pushRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend comerciante online 🚀");
