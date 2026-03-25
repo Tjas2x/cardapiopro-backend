@@ -47,13 +47,18 @@ async function login(req, res) {
 }
 
 /**
- * 🆕 REGISTER COM AUTO-CRIAÇÃO DE RESTAURANTE
+ * 🆕 REGISTER COM TELEFONE + ENDEREÇO
  */
 async function register(req, res) {
   try {
+    console.log("📥 BODY RECEBIDO:", req.body); // 👈 COLOCA AQUI
     const name = String(req.body?.name || "").trim();
     const email = String(req.body?.email || "").trim().toLowerCase();
     const password = String(req.body?.password || "").trim();
+
+    // 🆕 NOVOS CAMPOS
+    const phoneRaw = String(req.body?.phone || "").trim();
+    const address = String(req.body?.address || "").trim();
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: "Dados inválidos" });
@@ -69,6 +74,16 @@ async function register(req, res) {
 
     const hashed = await bcrypt.hash(password, 10);
 
+    // 📱 FORMATA TELEFONE → padrão 55
+    const onlyNumbers = phoneRaw.replace(/\D/g, "");
+    let phoneFormatted = null;
+
+    if (onlyNumbers) {
+      phoneFormatted = onlyNumbers.startsWith("55")
+        ? onlyNumbers
+        : `55${onlyNumbers}`;
+    }
+
     const user = await prisma.user.create({
       data: {
         name,
@@ -78,11 +93,13 @@ async function register(req, res) {
       },
     });
 
-    // 🚀 AUTO CRIA RESTAURANTE
+    // 🚀 CRIA RESTAURANTE COM TELEFONE + ENDEREÇO
     await prisma.restaurant.create({
       data: {
         name: name,
         ownerId: user.id,
+        phone: phoneFormatted,
+        address: address || null,
       },
     });
 
@@ -108,7 +125,7 @@ async function register(req, res) {
 }
 
 /**
- * RESET — PASSO 1
+ * 🔁 RESET — PASSO 1
  */
 async function forgotPassword(req, res) {
   try {
@@ -134,7 +151,7 @@ async function forgotPassword(req, res) {
 }
 
 /**
- * RESET — PASSO 2
+ * 🔁 RESET — PASSO 2
  */
 async function resetPassword(req, res) {
   try {
