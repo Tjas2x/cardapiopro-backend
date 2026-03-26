@@ -37,6 +37,7 @@ async function login(req, res) {
         id: user.id,
         email: user.email,
         name: user.name,
+        phone: user.phone, // 🔥 AGORA SEMPRE RETORNA
         role: user.role,
       },
     });
@@ -51,12 +52,12 @@ async function login(req, res) {
  */
 async function register(req, res) {
   try {
-    console.log("📥 BODY RECEBIDO:", req.body); // 👈 COLOCA AQUI
+    console.log("📥 BODY RECEBIDO:", req.body);
+
     const name = String(req.body?.name || "").trim();
     const email = String(req.body?.email || "").trim().toLowerCase();
     const password = String(req.body?.password || "").trim();
 
-    // 🆕 NOVOS CAMPOS
     const phoneRaw = String(req.body?.phone || "").trim();
     const address = String(req.body?.address || "").trim();
 
@@ -74,26 +75,33 @@ async function register(req, res) {
 
     const hashed = await bcrypt.hash(password, 10);
 
-    // 📱 FORMATA TELEFONE → padrão 55
+    // 🔥 NORMALIZAÇÃO FORTE DO TELEFONE
     const onlyNumbers = phoneRaw.replace(/\D/g, "");
-    let phoneFormatted = null;
 
-    if (onlyNumbers) {
-      phoneFormatted = onlyNumbers.startsWith("55")
-        ? onlyNumbers
-        : `55${onlyNumbers}`;
+    if (!onlyNumbers || onlyNumbers.length < 10) {
+      return res.status(400).json({ error: "Telefone inválido" });
     }
 
+    const phoneFormatted = onlyNumbers.startsWith("55")
+      ? onlyNumbers
+      : `55${onlyNumbers}`;
+
+    console.log("📱 TELEFONE RAW:", phoneRaw);
+    console.log("📱 NUMEROS:", onlyNumbers);
+    console.log("📱 FORMATADO:", phoneFormatted);
+
+    // 🔥 CRIA USER COM TELEFONE
     const user = await prisma.user.create({
       data: {
         name,
         email,
         password: hashed,
+        phone: phoneFormatted,
         role: "MERCHANT",
       },
     });
 
-    // 🚀 CRIA RESTAURANTE COM TELEFONE + ENDEREÇO
+    // 🔥 CRIA RESTAURANTE (mantém também)
     await prisma.restaurant.create({
       data: {
         name: name,
@@ -115,6 +123,7 @@ async function register(req, res) {
         id: user.id,
         email: user.email,
         name: user.name,
+        phone: user.phone,
         role: user.role,
       },
     });
